@@ -2,9 +2,11 @@ from flask import Flask, request, jsonify
 import sqlite3
 import datetime
 import requests
+import logging
 
 app = Flask(__name__)
 
+logging.basicConfig(level=logging.INFO)
 
 # Function to connect to the database
 def connect_db():
@@ -98,60 +100,70 @@ def analyze_watering_need(daily_forecast, soil_moisture, humidity, watered_recen
     """
     Analyze whether watering is needed based on today's and tomorrow's weather data,
     soil moisture, and humidity.
-
-    Parameters:
-    - daily_forecast (dict): Daily weather data containing temperatures and precipitation.
-    - soil_moisture (float): Soil moisture level from the sensor.
-    - humidity (float): Humidity level from the sensor.
-    - watered_recently (bool): Flag indicating if the plants were watered recently.
-    - current_humidity (float): Current humidity level to check against the overwatering risk.
-
-    Returns:
-    - str: Recommendation on whether to water the plants.
     """
+
+    # Extract relevant forecast data
     today_index = 0
     tomorrow_index = 1
-
     today_precipitation = daily_forecast['precipitation'][today_index]
     tomorrow_precipitation = daily_forecast['precipitation'][tomorrow_index]
     today_max_temp = daily_forecast['max_temperatures'][today_index]
     tomorrow_max_temp = daily_forecast['max_temperatures'][tomorrow_index]
 
+    # Define thresholds
     moisture_threshold = 30.0  # Soil moisture threshold
     humidity_threshold = 50.0  # Humidity threshold
 
+    # Log all input values for debugging
+    logging.info(f"Today's Precipitation: {today_precipitation}")
+    logging.info(f"Tomorrow's Precipitation: {tomorrow_precipitation}")
+    logging.info(f"Soil Moisture: {soil_moisture}")
+    logging.info(f"Humidity: {humidity}")
+    logging.info(f"Current Max Temperature: {today_max_temp}")
+    logging.info(f"Tomorrow's Max Temperature: {tomorrow_max_temp}")
+    logging.info(f"Watered Recently: {watered_recently}")
+    logging.info(f"Current Humidity: {current_humidity}")
+
     # Check for immediate rain today
     if today_precipitation > 0:
+        logging.info("Condition Met: Rain expected today.")
         return "No watering needed; rain is expected today."
 
-    # If no rain has occurred today but rain is expected tomorrow
+    # If no rain today but rain expected tomorrow
     if today_precipitation == 0 and tomorrow_precipitation > 0:
-        # Check the current soil moisture level
         if soil_moisture < moisture_threshold:
+            logging.info("Condition Met: No rain today but rain expected tomorrow, soil moisture is low.")
             return "Watering not needed; soil moisture is low, but rain is expected tomorrow."
         else:
+            logging.info("Condition Met: No rain today but rain expected tomorrow, soil moisture is adequate.")
             return "No watering needed; soil moisture is adequate despite low moisture."
 
     # Check if soil moisture is below the threshold
     if soil_moisture < moisture_threshold:
+        logging.info("Condition Met: Soil moisture is below the threshold.")
         return "Watering needed; soil moisture is below the threshold."
 
     # Check humidity level
     if humidity < humidity_threshold:
+        logging.info("Condition Met: Humidity is below the threshold.")
         return "Watering needed; humidity is below the threshold."
 
     # Check for significant temperature increase
     if tomorrow_max_temp > today_max_temp + 2:  # Significant temperature increase
+        logging.info("Condition Met: Tomorrow's temperature is significantly higher.")
         return "Watering needed; temperature is significantly higher tomorrow."
 
     # Check for significant temperature drop
     if tomorrow_max_temp < today_max_temp:
+        logging.info("Condition Met: Tomorrow's temperature is cooler, evaporation reduced.")
         return "No watering needed; cooler temperatures will reduce evaporation."
 
     # Check for overwatering risk
     if watered_recently and current_humidity > humidity_threshold:
+        logging.info("Condition Met: Recently watered and high humidity, no watering needed.")
         return "No watering needed; soil has been watered recently and humidity is high."
 
+    logging.info("Condition Met: No watering needed, conditions are stable.")
     return "No watering needed; conditions are stable."
 
 
