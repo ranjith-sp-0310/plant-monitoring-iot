@@ -212,6 +212,10 @@ def watering_decision():
         area = 2000.67  # Example area to be watered in square meters
         soil_depth = 0.30  # Example soil depth in meters
         water_amount = calculate_water_amount(soil_moisture, area, soil_depth, predicted_rainfall)
+        if "No watering needed" in decision:
+            # If no watering is needed, we can set water amount to 0
+            water_amount = 0  # Optional: Can also be handled in calculate_water_amount function
+
 
         return jsonify({
             'watering_decision': decision,
