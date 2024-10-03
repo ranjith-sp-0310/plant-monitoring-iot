@@ -1,5 +1,3 @@
-Here’s the README formatted in Markdown:
-
 ```
 # Plant Watering System
 
@@ -79,4 +77,3 @@ Contributions are welcome! Please fork the repository and submit a pull request 
 - [OpenWeather](https://openweathermap.org/) for providing weather data.
 - [SQLite](https://www.sqlite.org/) for easy database management.
 ```
-
