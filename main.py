@@ -87,7 +87,7 @@ def get_daily_weather_forecast(latitude, longitude):
             'min_temperatures': weather_data['daily']['temperature_2m_min'],
             'precipitation': weather_data['daily']['precipitation_sum']
         }
-
+        print(daily_data)
         return daily_data
 
     except requests.exceptions.RequestException as e:
@@ -97,73 +97,53 @@ def get_daily_weather_forecast(latitude, longitude):
 
 # Function to analyze watering needs
 def analyze_watering_need(daily_forecast, soil_moisture, humidity, watered_recently, current_humidity):
-    """
-    Analyze whether watering is needed based on today's and tomorrow's weather data,
-    soil moisture, and humidity.
-    """
-
-    # Extract relevant forecast data
-    today_index = 0
-    tomorrow_index = 1
-    today_precipitation = daily_forecast['precipitation'][today_index]
-    tomorrow_precipitation = daily_forecast['precipitation'][tomorrow_index]
-    today_max_temp = daily_forecast['max_temperatures'][today_index]
-    tomorrow_max_temp = daily_forecast['max_temperatures'][tomorrow_index]
-
     # Define thresholds
-    moisture_threshold = 30.0  # Soil moisture threshold
+    moisture_threshold = 30.0  # General soil moisture threshold
+    critical_moisture_threshold = 10.0  # Critical moisture threshold
     humidity_threshold = 50.0  # Humidity threshold
 
-    # Log all input values for debugging
-    logging.info(f"Today's Precipitation: {today_precipitation}")
-    logging.info(f"Tomorrow's Precipitation: {tomorrow_precipitation}")
+    # Log input values
     logging.info(f"Soil Moisture: {soil_moisture}")
-    logging.info(f"Humidity: {humidity}")
-    logging.info(f"Current Max Temperature: {today_max_temp}")
-    logging.info(f"Tomorrow's Max Temperature: {tomorrow_max_temp}")
-    logging.info(f"Watered Recently: {watered_recently}")
-    logging.info(f"Current Humidity: {current_humidity}")
 
-    # Check for immediate rain today
+    # Step 1: Check soil moisture first
+    if soil_moisture >= moisture_threshold:
+        logging.info("Condition Met: Soil moisture is above the threshold, no watering needed.")
+        return "No watering needed; soil moisture is sufficient."
+
+    # Step 2: Only if soil moisture is low, proceed to check rain forecasts
+    logging.info(f"Today's Precipitation: {daily_forecast['precipitation'][0]}")
+    logging.info(f"Tomorrow's Precipitation: {daily_forecast['precipitation'][1]}")
+
+    today_precipitation = daily_forecast['precipitation'][0]
+    tomorrow_precipitation = daily_forecast['precipitation'][1]
+
+    # Step 3: Check for rain today (no watering needed if rain expected today)
     if today_precipitation > 0:
-        logging.info("Condition Met: Rain expected today.")
+        logging.info("Condition Met: Rain expected today, no watering needed despite low soil moisture.")
         return "No watering needed; rain is expected today."
 
-    # If no rain today but rain expected tomorrow
-    if today_precipitation == 0 and tomorrow_precipitation > 0:
-        if soil_moisture < moisture_threshold:
-            logging.info("Condition Met: No rain today but rain expected tomorrow, soil moisture is low.")
-            return "Watering not needed; soil moisture is low, but rain is expected tomorrow."
-        else:
-            logging.info("Condition Met: No rain today but rain expected tomorrow, soil moisture is adequate.")
-            return "No watering needed; soil moisture is adequate despite low moisture."
+    # Step 4: Check for rain tomorrow (but soil moisture critically low)
+    if tomorrow_precipitation > 0:
+        if soil_moisture < critical_moisture_threshold:
+            logging.info("Condition Met: Rain expected tomorrow, but soil moisture critically low.")
+            return "Minimal watering needed; soil moisture is critically low, but rain is expected tomorrow."
+        logging.info("Condition Met: Rain expected tomorrow, soil moisture low but above critical threshold.")
+        return "No watering needed; rain is expected tomorrow and soil moisture is not critically low."
 
-    # Check if soil moisture is below the threshold
-    if soil_moisture < moisture_threshold:
-        logging.info("Condition Met: Soil moisture is below the threshold.")
-        return "Watering needed; soil moisture is below the threshold."
-
-    # Check humidity level
+    # Step 5: Check for low humidity or temperature increase, only if no rain is expected
+    logging.info(f"Humidity: {humidity}")
     if humidity < humidity_threshold:
-        logging.info("Condition Met: Humidity is below the threshold.")
-        return "Watering needed; humidity is below the threshold."
+        logging.info("Condition Met: Low humidity, watering needed.")
+        return "Watering needed; humidity is low and no rain is expected."
 
-    # Check for significant temperature increase
-    if tomorrow_max_temp > today_max_temp + 2:  # Significant temperature increase
-        logging.info("Condition Met: Tomorrow's temperature is significantly higher.")
-        return "Watering needed; temperature is significantly higher tomorrow."
+    logging.info(f"Today's Max Temperature: {daily_forecast['max_temperatures'][0]}")
+    logging.info(f"Tomorrow's Max Temperature: {daily_forecast['max_temperatures'][1]}")
 
-    # Check for significant temperature drop
-    if tomorrow_max_temp < today_max_temp:
-        logging.info("Condition Met: Tomorrow's temperature is cooler, evaporation reduced.")
-        return "No watering needed; cooler temperatures will reduce evaporation."
+    if daily_forecast['max_temperatures'][1] > daily_forecast['max_temperatures'][0] + 2:
+        logging.info("Condition Met: Significant temperature increase, watering needed.")
+        return "Watering needed; temperature is expected to increase significantly."
 
-    # Check for overwatering risk
-    if watered_recently and current_humidity > humidity_threshold:
-        logging.info("Condition Met: Recently watered and high humidity, no watering needed.")
-        return "No watering needed; soil has been watered recently and humidity is high."
-
-    logging.info("Condition Met: No watering needed, conditions are stable.")
+    logging.info("Condition Met: No watering needed; conditions are stable despite low soil moisture.")
     return "No watering needed; conditions are stable."
 
 
@@ -173,7 +153,7 @@ def calculate_water_amount(soil_moisture, area, soil_depth, predicted_rainfall):
     Calculate the amount of water to apply based on soil moisture, area to water, soil depth, and predicted rainfall.
 
     Parameters:
-    - soil_moisture (float): Current soil moisture level.
+    - soil_moisture (float): Current soil moisture level (as a percentage).
     - area (float): Area to be watered (in square meters).
     - soil_depth (float): Depth of the soil (in meters).
     - predicted_rainfall (float): Amount of rain expected (in mm).
@@ -181,14 +161,24 @@ def calculate_water_amount(soil_moisture, area, soil_depth, predicted_rainfall):
     Returns:
     - float: Amount of water to apply (in liters).
     """
-    moisture_threshold = 60.0  # Desired moisture level in mm
+    moisture_threshold = 20.0  # Adjusted desired moisture level in mm (example value)
     soil_depth_mm = soil_depth * 1000  # Convert depth to mm
 
-    current_moisture_mm = soil_moisture / 100 * soil_depth_mm
+    # Current moisture in mm
+    current_moisture_mm = (soil_moisture / 100) * soil_depth_mm
     desired_moisture_mm = moisture_threshold * area  # Total moisture desired for the area
 
-    water_deficit_mm = desired_moisture_mm - current_moisture_mm + predicted_rainfall * area
-    water_deficit_liters = max(0, water_deficit_mm) * area / 1000  # Convert to liters
+    # Calculate the water deficit taking rainfall into account
+    water_deficit_mm = desired_moisture_mm - current_moisture_mm - (predicted_rainfall * area)
+
+    # Log values for debugging
+    logging.debug(f"Current Moisture: {current_moisture_mm} mm")
+    logging.debug(f"Desired Moisture: {desired_moisture_mm} mm")
+    logging.debug(f"Predicted Rainfall: {predicted_rainfall} mm")
+    logging.debug(f"Water Deficit: {water_deficit_mm} mm")
+
+    # Convert to liters; ensure non-negative
+    water_deficit_liters = max(0, water_deficit_mm) * area / 1000  # Convert mm to liters
 
     return water_deficit_liters
 
@@ -208,8 +198,8 @@ def watering_decision():
 
     soil_moisture, temperature, humidity = sensor_data
 
-    latitude = 26.9176
-    longitude = 70.9039
+    latitude = 11.6538
+    longitude = 78.1554
 
     daily_forecast = get_daily_weather_forecast(latitude, longitude)
     if daily_forecast:
@@ -219,8 +209,8 @@ def watering_decision():
 
         # Calculate water amount if light rain is predicted
         predicted_rainfall = daily_forecast['precipitation'][1]  # Assuming tomorrow's rainfall is of interest
-        area = 20.0  # Example area to be watered in square meters
-        soil_depth = 0.15  # Example soil depth in meters
+        area = 2000.67  # Example area to be watered in square meters
+        soil_depth = 0.30  # Example soil depth in meters
         water_amount = calculate_water_amount(soil_moisture, area, soil_depth, predicted_rainfall)
 
         return jsonify({
