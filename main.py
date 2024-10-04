@@ -61,6 +61,10 @@ def receive_sensor_data():
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 
+@app.route('/', methods=['GET'])
+def home():
+    return "<a href='/api/watering_decision'><h1>Get Watering Decision</h1></a>"
+
 
 # Function to get daily weather data from Open-Meteo API
 def get_daily_weather_forecast(latitude, longitude):
