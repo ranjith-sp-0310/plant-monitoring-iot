@@ -63,7 +63,7 @@ def receive_sensor_data():
 
 @app.route('/', methods=['GET'])
 def home():
-    return "<a href='/api/watering_decision'><h1>Get Watering Decision</h1></a>"
+    return "<a href='/api/watering_decision'><h1>Get Watering Decision and The Water Amount in Litres</h1></a>"
 
 
 # Function to get daily weather data from Open-Meteo API
