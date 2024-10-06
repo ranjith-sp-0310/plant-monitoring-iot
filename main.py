@@ -215,10 +215,10 @@ def calculate_water_amount(soil_moisture, area, soil_depth, predicted_rainfall, 
 
 # Function to analyze watering needs
 def analyze_watering_need(daily_forecast, soil_moisture, humidity, watered_recently):
-    #Everything in percentage
+    # Everything in percentage
     moisture_threshold = soil_moisture_threshold_percentage
     print("Global Moisture Threshold:" + str(moisture_threshold))
-    critical_moisture_threshold = soil_moisture_threshold_percentage / 3  # Critical moisture threshold
+    critical_moisture_threshold = moisture_threshold / 3  # Critical moisture threshold
     humidity_threshold = 50.0  # Humidity threshold
 
     # Log input values
@@ -230,19 +230,21 @@ def analyze_watering_need(daily_forecast, soil_moisture, humidity, watered_recen
         return "No watering needed; soil moisture is sufficient."
 
     # Step 2: Only if soil moisture is low, proceed to check rain forecasts
-    logging.info(f"Today's Precipitation: {daily_forecast['precipitation'][0]}")
-    logging.info(f"Tomorrow's Precipitation: {daily_forecast['precipitation'][1]}")
-
     today_precipitation = daily_forecast['precipitation'][0]
     tomorrow_precipitation = daily_forecast['precipitation'][1]
+    # today_precipitation = 0
+    # tomorrow_precipitation = 0
+
+    logging.info(f"Today's Precipitation: {today_precipitation}")
+    logging.info(f"Tomorrow's Precipitation: {tomorrow_precipitation}")
 
     # Step 3: Check for rain today (no watering needed if rain expected today)
-    if today_precipitation > 0.5:
+    if today_precipitation > 0.3:
         logging.info("Condition Met: Rain expected today, no watering needed despite low soil moisture.")
         return "No watering needed; rain is expected today."
 
     # Step 4: Check for rain tomorrow (but soil moisture critically low)
-    if tomorrow_precipitation > 0.5:
+    if tomorrow_precipitation > 0.3:
         if soil_moisture < critical_moisture_threshold:
             logging.info("Condition Met: Rain expected tomorrow, but soil moisture critically low.")
             return "Minimal watering needed; soil moisture is critically low, but rain is expected tomorrow."
@@ -262,7 +264,12 @@ def analyze_watering_need(daily_forecast, soil_moisture, humidity, watered_recen
         logging.info("Condition Met: Significant temperature increase, watering needed.")
         return "Watering needed; temperature is expected to increase significantly."
 
-    logging.info("Condition Met: No watering needed; conditions are stable despite low soil moisture.")
+    # Step 6: Default case for low soil moisture with no extreme conditions or rain
+    if soil_moisture < moisture_threshold:
+        logging.info("Condition Met: Low soil moisture and no rain or extreme conditions detected, watering needed.")
+        return "Watering needed; soil moisture is below threshold and no rain is expected."
+
+    logging.info("Condition Met: No watering needed; conditions are stable.")
     return "No watering needed; conditions are stable."
 
 
@@ -306,6 +313,9 @@ def watering_decision():
         if "No watering needed" in decision:
             # If no watering is needed, we can set water amount to 0
             water_amount = 0  # Optional: Can also be handled in calculate_water_amount function
+
+        if "Minimal watering needed" in decision:
+            water_amount = water_amount/2  # Need a Better logic in Future
 
         return jsonify({
             'watering_decision': decision,
