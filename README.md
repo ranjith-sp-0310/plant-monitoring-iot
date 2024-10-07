@@ -8,7 +8,7 @@ The Plant Watering System is an automated solution designed to optimize plant ca
 ## Features
 
 - **Real-time Data Collection**: Collects data from soil moisture, temperature, and humidity sensors.
-- **Weather Forecasting**: Integrates with the OpenWeather API to retrieve rain predictions.
+- **Weather Forecasting**: Integrates with the OpenMeteo API to retrieve rain predictions.
 - **Automated Watering**: Calculates water requirements based on sensor data and plant type.
 - **Feedback Mechanism**: Assesses the accuracy of weather predictions to improve future decisions.
 - **SQLite Database**: Stores sensor data for historical analysis and monitoring.
@@ -49,7 +49,7 @@ The Plant Watering System is an automated solution designed to optimize plant ca
    ```
 
 4. **Configure Your API Key**:
-   - Obtain an API key from OpenWeather and update it in the code where specified.
+   - Obtain an API key from OpenMeteo and update it in the code where specified.
 
 5. **Connect the Sensors**:
    - Set up the sensors with the ESP32 as per your wiring diagram.
@@ -74,6 +74,6 @@ Contributions are welcome! Please fork the repository and submit a pull request 
 
 ## Acknowledgments
 
-- [OpenWeather](https://openweathermap.org/) for providing weather data.
+- [OpenMeteo](https://OpenMeteomap.org/) for providing weather data.
 - [SQLite](https://www.sqlite.org/) for easy database management.
 ```
