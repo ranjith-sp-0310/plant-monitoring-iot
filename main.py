@@ -100,7 +100,7 @@ def analyze_watering_need(daily_forecast, soil_moisture, humidity, watered_recen
     # Define thresholds
     moisture_threshold = 30.0  # General soil moisture threshold
     critical_moisture_threshold = 10.0  # Critical moisture threshold
-    humidity_threshold = 50.0  # Humidity threshold
+    humidity_threshold = 30.0  # Humidity threshold
 
     # Log input values
     logging.info(f"Soil Moisture: {soil_moisture}")
@@ -154,43 +154,87 @@ def analyze_watering_need(daily_forecast, soil_moisture, humidity, watered_recen
     return "No watering needed; conditions are stable."
 
 
-# Function to calculate water amount if light rain is predicted
-def calculate_water_amount(soil_moisture, area, soil_depth, predicted_rainfall):
+
+def calculate_water_amount(soil_moisture, area, soil_depth, predicted_rainfall, et0, kc, field_capacity=30):
     """
-    Calculate the amount of water to apply based on soil moisture, area to water, soil depth, and predicted rainfall.
+    Calculate the amount of water to apply based on soil moisture, area to water, soil depth, predicted rainfall,
+    and crop water requirements, taking field capacity into account.
 
     Parameters:
     - soil_moisture (float): Current soil moisture level (as a percentage).
     - area (float): Area to be watered (in square meters).
     - soil_depth (float): Depth of the soil (in meters).
     - predicted_rainfall (float): Amount of rain expected (in mm).
+    - et0 (float): Reference evapotranspiration (in mm/day).
+    - kc (float): Crop coefficient.
+    - field_capacity (float): Field capacity of the soil (as a percentage).
 
     Returns:
     - float: Amount of water to apply (in liters).
     """
-    moisture_threshold = 20.0  # Adjusted desired moisture level in mm (example value)
+    # Calculate crop evapotranspiration (ETc)
+    etc = et0 * kc  # ETc in mm/day
+
+    # Convert soil depth to mm
     soil_depth_mm = soil_depth * 1000  # Convert depth to mm
 
-    # Current moisture in mm
+    # Current moisture in mm based on soil moisture percentage
     current_moisture_mm = (soil_moisture / 100) * soil_depth_mm
-    desired_moisture_mm = moisture_threshold * area  # Total moisture desired for the area
 
-    # Calculate the water deficit taking rainfall into account
+    # Maximum allowable moisture based on field capacity
+    max_moisture_mm = (field_capacity / 100) * soil_depth_mm
+
+    # Desired moisture based on crop ETc and area, capped by field capacity
+    desired_moisture_mm = min(etc * area, max_moisture_mm)  # Total moisture needed for the crop (in mm)
+
+    # Calculate the water deficit, accounting for predicted rainfall
     water_deficit_mm = desired_moisture_mm - current_moisture_mm - (predicted_rainfall * area)
 
-    # Log values for debugging
-    logging.debug(f"Current Moisture: {current_moisture_mm} mm")
-    logging.debug(f"Desired Moisture: {desired_moisture_mm} mm")
-    logging.debug(f"Predicted Rainfall: {predicted_rainfall} mm")
-    logging.debug(f"Water Deficit: {water_deficit_mm} mm")
+    # Ensure that water deficit is not negative (no need for irrigation if excess water is present)
+    water_deficit_mm = max(0, water_deficit_mm)
 
-    # Convert to liters; ensure non-negative
-    water_deficit_liters = max(0, water_deficit_mm) * area / 1000  # Convert mm to liters
+    # Log values for info
+    logging.info(f"Current Moisture: {current_moisture_mm} mm")
+    logging.info(f"Desired Moisture: {desired_moisture_mm} mm")
+    logging.info(f"Predicted Rainfall: {predicted_rainfall} mm")
+    logging.info(f"Water Deficit: {water_deficit_mm} mm")
+
+    # Convert the deficit to liters (1 mm over 1 m² equals 1 liter)
+    water_deficit_liters = water_deficit_mm * area  # Total water deficit in liters
 
     return water_deficit_liters
 
+# API  to get Et0 values
+def get_et0_from_openmeteo(latitude, longitude):
+    """
+    Fetch the ET₀ (reference evapotranspiration) from Open-Meteo API for a given location.
 
-# API endpoint to analyze watering needs
+    Parameters:
+    - latitude (float): Latitude of the location.
+    - longitude (float): Longitude of the location.
+
+    Returns:
+    - float: The latest ET₀ value in mm/day.
+    """
+    url = f"https://api.open-meteo.com/v1/forecast?latitude={latitude}&longitude={longitude}&hourly=et0_fao_evapotranspiration&timezone=auto"
+
+    try:
+        response = requests.get(url)
+        data = response.json()
+        # Get the latest ET₀ value from the hourly forecast
+        et0_values = data['hourly']['et0_fao_evapotranspiration']
+        et0 = et0_values[0]  # Assuming we take the first (latest) value
+        if et0 <= 0:
+            et0 = 1.0  # may cause overwatering, Use Historical values to average
+            logging.info(f"Fetched ET₀ from Open-Meteo: {et0} mm/day")
+
+        return et0
+
+    except Exception as e:
+        logging.error(f"Failed to fetch ET₀: {e}")
+        return None
+
+
 @app.route('/api/watering_decision', methods=['GET'])
 def watering_decision():
     # Get the last recorded sensor data
@@ -216,20 +260,25 @@ def watering_decision():
 
         # Calculate water amount if light rain is predicted
         predicted_rainfall = daily_forecast['precipitation'][1]  # Assuming tomorrow's rainfall is of interest
-        area = 2000.67  # Example area to be watered in square meters
-        soil_depth = 0.30  # Example soil depth in meters
-        water_amount = calculate_water_amount(soil_moisture, area, soil_depth, predicted_rainfall)
+        # predicted_rainfall = 0
+        area = 10  # Example area to be watered in square meters
+        logging.info(f"Area in sqm : {area}")
+        soil_depth = 0.2  # Example soil depth in meters
+        logging.info(f"Soil depth in mm : {soil_depth* 1000}")
+        et0 = get_et0_from_openmeteo(latitude, longitude)
+        water_amount = calculate_water_amount(soil_moisture, area, soil_depth, predicted_rainfall,et0,kc=1.1)
+        logging.info(f"Watering amount in litres: {water_amount}")
         if "No watering needed" in decision:
             # If no watering is needed, we can set water amount to 0
             water_amount = 0  # Optional: Can also be handled in calculate_water_amount function
 
         if "Minimal watering needed" in decision:
-            water_amount = water_amount / 2  # Need a Better logic in Future
+            water_amount = int(water_amount) / 2  # Need a Better logic in Future
 
 
         return jsonify({
             'watering_decision': decision,
-            'water_amount_liters': water_amount
+            'water_amount_liters': int(water_amount)
         }), 200
     else:
         return jsonify({'error': 'Error fetching weather data'}), 500
