@@ -1,4 +1,4 @@
-from flask import Flask, request, jsonify
+from flask import Flask, request, jsonify, render_template
 import sqlite3
 import datetime
 import requests
@@ -29,6 +29,8 @@ def init_db():
                      )''')
     conn.commit()
     conn.close()
+
+
 
 
 # API endpoint to receive sensor data
@@ -235,6 +237,29 @@ def get_et0_from_openmeteo(latitude, longitude):
         return None
 
 
+@app.route('/past_decisions', methods=['GET'])
+def past_decisions():
+    conn = connect_db()
+    cursor = conn.cursor()
+
+    # Fetch past decisions
+    cursor.execute("SELECT * FROM decisions")  # Adjust the SQL query as needed
+    decisions = cursor.fetchall()
+
+    # Convert the fetched decisions to a list of dictionaries
+    decisions_list = []
+    for decision in decisions:
+        # Assuming your table has fields: id, decision, timestamp
+        decisions_list.append({
+            'decision': decision[1],
+            'timestamp': decision[2]
+        })
+
+    conn.close()
+
+    return jsonify(decisions_list)  # Return as JSON response
+
+
 @app.route('/api/watering_decision', methods=['GET'])
 def watering_decision():
     # Get the last recorded sensor data
@@ -257,6 +282,11 @@ def watering_decision():
         watered_recently = False  # This should be a real flag from your watering logic
         current_humidity = humidity  # Assuming current humidity is taken from the sensor data
         decision = analyze_watering_need(daily_forecast, soil_moisture, humidity, watered_recently, current_humidity)
+        conn = connect_db()
+        cursor = conn.cursor()
+        cursor.execute("INSERT INTO decisions (decision) VALUES (?)", (decision,))
+        conn.commit()
+        conn.close()
 
         # Calculate water amount if light rain is predicted
         predicted_rainfall = daily_forecast['precipitation'][1]  # Assuming tomorrow's rainfall is of interest
@@ -284,7 +314,50 @@ def watering_decision():
         return jsonify({'error': 'Error fetching weather data'}), 500
 
 
+def get_sensor_data():
+    """
+    Fetch the latest sensor data from the SQLite database.
+    """
+    conn = connect_db()
+    cursor = conn.cursor()
+
+    # Fetch the latest record
+    cursor.execute('''SELECT temperature, humidity, soil_moisture
+                      FROM sensors
+                      ORDER BY timestamp DESC LIMIT 1''')
+    data = cursor.fetchone()
+
+    # Close the database connection
+    conn.close()
+
+    # If no data is present, return default values
+    if data:
+        return {
+            'temperature': data[0],
+            'humidity': data[1],
+            'soil_moisture': data[2],
+
+        }
+    else:
+        return {
+            'temperature': 0.0,
+            'humidity': 0.0,
+            'soil_moisture': 0.0,
+
+        }
+
+
+@app.route('/')
+def index():
+    return render_template('index.html')
+
+
+@app.route('/data')
+def sensor_data():
+    # Fetch sensor data from the SQLite database
+    data = get_sensor_data()
+    return jsonify(data)
 # Run the app
 if __name__ == '__main__':
-    # init_db()  # Initialize the database if it hasn't been created
-    app.run(host='0.0.0.0', port=5000)
+    #init_db()  # Initialize the database if it hasn't been created
+    app.run(host='0.0.0.0', port=5000, debug=True)

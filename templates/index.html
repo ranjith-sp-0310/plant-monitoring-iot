@@ -1,0 +1,215 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Sensor Data Dashboard</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/3.6.2/chart.min.css" />
+    <style>
+        /* Global Styling */
+        body {
+            font-family: 'Roboto', sans-serif;
+            background-color: #0f0f0f;
+            color: #ffffff;
+            margin: 0;
+            padding: 20px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+
+        h1 {
+            font-size: 2.5em;
+            margin-bottom: 40px;
+            color: #00d1ff;
+            text-shadow: 0px 0px 15px rgba(0, 209, 255, 0.8);
+        }
+
+        #sensor-info {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: 20px;
+            width: 100%;
+            max-width: 1200px;
+        }
+
+        .sensor-box {
+            background: rgba(255, 255, 255, 0.05);
+            border: 1px solid #00d1ff;
+            border-radius: 15px;
+            padding: 20px;
+            text-align: center;
+            box-shadow: 0px 0px 20px rgba(0, 209, 255, 0.4);
+            transition: transform 0.3s ease, box-shadow 0.3s ease;
+        }
+
+        .sensor-box:hover {
+            transform: scale(1.05);
+            box-shadow: 0px 0px 30px rgba(0, 209, 255, 0.8);
+        }
+
+        .sensor-box h3 {
+            font-size: 1.5em;
+            color: #00ff94;
+            text-shadow: 0px 0px 8px rgba(0, 255, 148, 0.7);
+            margin-bottom: 15px;
+        }
+
+        .sensor-box p {
+            font-size: 2em;
+            font-weight: bold;
+            color: #ffffff;
+            margin: 0;
+        }
+
+        #past-decisions {
+            margin-top: 30px;
+            width: 100%;
+            max-width: 1200px;
+            background: rgba(255, 255, 255, 0.05);
+            border-radius: 20px;
+            padding: 20px;
+            box-shadow: 0px 0px 40px rgba(0, 209, 255, 0.3);
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            color: #ffffff;
+            margin-top: 20px;
+        }
+
+        table, th, td {
+            border: 1px solid #00d1ff;
+        }
+
+        th, td {
+            padding: 12px;
+            text-align: left;
+        }
+
+        th {
+            background-color: #00d1ff;
+            color: #000000;
+        }
+
+        /* Responsive Design */
+        @media (max-width: 768px) {
+            h1 {
+                font-size: 2em;
+            }
+
+            .sensor-box {
+                padding: 15px;
+            }
+
+            .sensor-box h3 {
+                font-size: 1.3em;
+            }
+
+            .sensor-box p {
+                font-size: 1.8em;
+            }
+
+            #past-decisions {
+                padding: 15px;
+            }
+        }
+
+        @media (max-width: 480px) {
+            h1 {
+                font-size: 1.8em;
+            }
+
+            .sensor-box h3 {
+                font-size: 1.2em;
+            }
+
+            .sensor-box p {
+                font-size: 1.5em;
+            }
+        }
+    </style>
+</head>
+<body>
+
+    <h1>IOT - Plant Monitoring System</h1>
+
+    <div id="sensor-info">
+        <div class="sensor-box">
+            <h3>Temperature</h3>
+            <p id="temperature">0 °C</p>
+        </div>
+        <div class="sensor-box">
+            <h3>Humidity</h3>
+            <p id="humidity">0 %</p>
+        </div>
+        <div class="sensor-box">
+            <h3>Soil Moisture</h3>
+            <p id="soil-moisture">0 %</p>
+        </div>
+    </div>
+
+    <div id="past-decisions">
+        <h2>Previous Decisions</h2>
+        <table>
+            <thead>
+                <tr>
+                    <th>Decision</th>
+                    <th>Decision Time</th>
+                </tr>
+            </thead>
+            <tbody id="decisions-table-body">
+                <!-- Decisions will be populated here dynamically -->
+            </tbody>
+        </table>
+    </div>
+
+    <script>
+        const temperatureElement = document.getElementById('temperature');
+        const humidityElement = document.getElementById('humidity');
+        const soilMoistureElement = document.getElementById('soil-moisture');
+        const decisionsTableBody = document.getElementById('decisions-table-body');
+
+        // Fetch sensor data
+        function fetchSensorData() {
+            fetch('/data')
+                .then(response => response.json())
+                .then(data => {
+                    temperatureElement.innerHTML = `${data.temperature} °C`;
+                    humidityElement.innerHTML = `${data.humidity} %`;
+                    soilMoistureElement.innerHTML = `${data.soil_moisture} %`;
+                });
+        }
+
+        // Fetch past decisions
+        function fetchPastDecisions() {
+            fetch('/past_decisions')
+                .then(response => response.json())
+                .then(data => {
+                    decisionsTableBody.innerHTML = ''; // Clear previous decisions
+
+                    data.forEach(decision => {
+                        const row = document.createElement('tr');
+                        const decisionCell = document.createElement('td');
+                        const timestampCell = document.createElement('td');
+
+                        decisionCell.textContent = decision.decision;
+                        timestampCell.textContent = decision.timestamp;
+
+                        row.appendChild(decisionCell);
+                        row.appendChild(timestampCell);
+                        decisionsTableBody.appendChild(row);
+                    });
+                });
+        }
+
+        // Fetch data every 5 seconds
+        setInterval(fetchSensorData, 5000);
+
+        // Initial fetch
+        fetchSensorData();
+        fetchPastDecisions();
+    </script>
+</body>
+</html>
