@@ -157,6 +157,7 @@
                 <tr>
                     <th>Decision</th>
                     <th>Decision Time</th>
+                    <th>Water Amount (Litres)</th>
                 </tr>
             </thead>
             <tbody id="decisions-table-body">
@@ -193,12 +194,18 @@
                         const row = document.createElement('tr');
                         const decisionCell = document.createElement('td');
                         const timestampCell = document.createElement('td');
+                        const wateramountCell = document.createElement('td');
 
                         decisionCell.textContent = decision.decision;
                         timestampCell.textContent = decision.timestamp;
+                        wateramountCell.textContent = decision.water_amount;
+                        if (!decision.water_amount) {
+                            wateramountCell.textContent = 0;
+                        }
 
                         row.appendChild(decisionCell);
                         row.appendChild(timestampCell);
+                        row.appendChild(wateramountCell);
                         decisionsTableBody.appendChild(row);
                     });
                 });

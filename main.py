@@ -113,10 +113,10 @@ def analyze_watering_need(daily_forecast, soil_moisture, humidity, watered_recen
         return "No watering needed; soil moisture is sufficient."
 
     # Step 2: Only if soil moisture is low, proceed to check rain forecasts
-    today_precipitation = daily_forecast['precipitation'][0]
-    tomorrow_precipitation = daily_forecast['precipitation'][1]
-    # today_precipitation = 0
-    # tomorrow_precipitation = 0
+    # today_precipitation = daily_forecast['precipitation'][0]
+    # tomorrow_precipitation = daily_forecast['precipitation'][1]
+    today_precipitation = 0
+    tomorrow_precipitation = 0
 
     logging.info(f"Today's Precipitation: {today_precipitation}")
     logging.info(f"Tomorrow's Precipitation: {tomorrow_precipitation}")
@@ -252,7 +252,8 @@ def past_decisions():
         # Assuming your table has fields: id, decision, timestamp
         decisions_list.append({
             'decision': decision[1],
-            'timestamp': decision[2]
+            'timestamp': decision[2],
+            'water_amount': decision[3]
         })
 
     conn.close()
@@ -284,13 +285,10 @@ def watering_decision():
         decision = analyze_watering_need(daily_forecast, soil_moisture, humidity, watered_recently, current_humidity)
         conn = connect_db()
         cursor = conn.cursor()
-        cursor.execute("INSERT INTO decisions (decision) VALUES (?)", (decision,))
-        conn.commit()
-        conn.close()
 
         # Calculate water amount if light rain is predicted
-        predicted_rainfall = daily_forecast['precipitation'][1]  # Assuming tomorrow's rainfall is of interest
-        # predicted_rainfall = 0
+        # predicted_rainfall = daily_forecast['precipitation'][1]  # Assuming tomorrow's rainfall is of interest
+        predicted_rainfall = 0
         area = 10  # Example area to be watered in square meters
         logging.info(f"Area in sqm : {area}")
         soil_depth = 0.2  # Example soil depth in meters
@@ -305,7 +303,9 @@ def watering_decision():
         if "Minimal watering needed" in decision:
             water_amount = int(water_amount) / 2  # Need a Better logic in Future
 
-
+        cursor.execute("INSERT INTO decisions (decision,water_amount) VALUES (?,?)", (decision, water_amount))
+        conn.commit()
+        conn.close()
         return jsonify({
             'watering_decision': decision,
             'water_amount_liters': int(water_amount)
