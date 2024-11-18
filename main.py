@@ -1,8 +1,10 @@
-from flask import Flask, request, jsonify, render_template
-import sqlite3
 import datetime
-import requests
 import logging
+import sqlite3
+from datetime import datetime
+
+import requests
+from flask import Flask, request, jsonify, render_template
 
 app = Flask(__name__)
 
@@ -48,7 +50,7 @@ def receive_sensor_data():
             return jsonify({'error': 'Missing data'}), 400
 
         # Get the current timestamp
-        timestamp = datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+        timestamp = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
 
         # Insert the data into the database
         conn = connect_db()
@@ -98,48 +100,45 @@ def get_daily_weather_forecast(latitude, longitude):
 
 
 # Function to analyze watering needs
-def analyze_watering_need(daily_forecast, soil_moisture, humidity, watered_recently, current_humidity):
+def analyze_watering_need(daily_forecast, soil_moisture, humidity):
     # Define thresholds
     moisture_threshold = 30.0  # General soil moisture threshold
     critical_moisture_threshold = 10.0  # Critical moisture threshold
     humidity_threshold = 30.0  # Humidity threshold
 
     # Log input values
-    logging.info(f"Soil Moisture: {soil_moisture}")
+    logging.info(f"Soil Moisture: {soil_moisture}, Humidity: {humidity}")
 
     # Step 1: Check soil moisture first
     if soil_moisture >= moisture_threshold:
         logging.info("Condition Met: Soil moisture is above the threshold, no watering needed.")
         return "No watering needed; soil moisture is sufficient."
 
-    # Step 2: Only if soil moisture is low, proceed to check rain forecasts
-    # today_precipitation = daily_forecast['precipitation'][0]
-    # tomorrow_precipitation = daily_forecast['precipitation'][1]
-    today_precipitation = 0
-    tomorrow_precipitation = 0
+    # Step 2: Soil moisture is low, check for rain
+    today_precipitation = daily_forecast['precipitation'][0]
+    tomorrow_precipitation = daily_forecast['precipitation'][1]
 
     logging.info(f"Today's Precipitation: {today_precipitation}")
     logging.info(f"Tomorrow's Precipitation: {tomorrow_precipitation}")
 
-    # Step 3: Check for rain today (no watering needed if rain expected today)
     if today_precipitation > 0.3:
         logging.info("Condition Met: Rain expected today, no watering needed despite low soil moisture.")
         return "No watering needed; rain is expected today."
 
-    # Step 4: Check for rain tomorrow (but soil moisture critically low)
     if tomorrow_precipitation > 0.3:
         if soil_moisture < critical_moisture_threshold:
             logging.info("Condition Met: Rain expected tomorrow, but soil moisture critically low.")
-            return "Minimal watering needed; soil moisture is critically low, but rain is expected tomorrow."
+            return "Minimal watering needed; soil moisture critically low, but rain is expected tomorrow."
         logging.info("Condition Met: Rain expected tomorrow, soil moisture low but above critical threshold.")
         return "No watering needed; rain is expected tomorrow and soil moisture is not critically low."
 
-    # Step 5: Check for low humidity or temperature increase, only if no rain is expected
+    # Step 3: Check for humidity if no rain expected
     logging.info(f"Humidity: {humidity}")
     if humidity < humidity_threshold:
         logging.info("Condition Met: Low humidity, watering needed.")
         return "Watering needed; humidity is low and no rain is expected."
 
+    # Step 4: If no rain, high temperature increase, or low humidity, watering needed
     logging.info(f"Today's Max Temperature: {daily_forecast['max_temperatures'][0]}")
     logging.info(f"Tomorrow's Max Temperature: {daily_forecast['max_temperatures'][1]}")
 
@@ -147,14 +146,45 @@ def analyze_watering_need(daily_forecast, soil_moisture, humidity, watered_recen
         logging.info("Condition Met: Significant temperature increase, watering needed.")
         return "Watering needed; temperature is expected to increase significantly."
 
-    # Step 6: Default case for low soil moisture with no extreme conditions or rain
-    if soil_moisture < moisture_threshold:
-        logging.info("Condition Met: Low soil moisture and no rain or extreme conditions detected, watering needed.")
-        return "Watering needed; soil moisture is below threshold and no rain is expected."
+    # Step 5: If no rain and moisture below threshold, watering needed
+    logging.info("Condition Met: Low soil moisture and no rain or extreme conditions detected, watering needed.")
+    return "Watering needed; soil moisture is below threshold and no rain or extreme conditions are expected."
 
-    logging.info("Condition Met: No watering needed; conditions are stable.")
-    return "No watering needed; conditions are stable."
 
+def calculate_dynamic_kc(start_date, current_date=None):
+    """
+    Calculate the crop coefficient (Kc) dynamically based on growth stages.
+
+    Parameters:
+        start_date (datetime): Planting start date.
+        current_date (datetime): Current date (default: today).
+
+    Returns:
+        float: Current Kc value.
+    """
+    # Define growth stages and corresponding Kc values
+    growth_stages = [
+        {"stage": "Initial", "days": 20, "kc": 0.45},  # Emergence
+        {"stage": "Development", "days": 30, "kc": 0.75},  # Vegetative Growth
+        {"stage": "Mid-Season", "days": 40, "kc": 1.15},  # Tuber Bulking
+        {"stage": "Late-Season", "days": 30, "kc": 0.9},  # Maturity
+    ]
+
+    if current_date is None:
+        current_date = datetime.now()
+
+    # Calculate days elapsed since planting
+    days_elapsed = (current_date - start_date).days
+
+    # Determine the current growth stage and Kc value
+    cumulative_days = 0
+    for stage in growth_stages:
+        cumulative_days += stage["days"]
+        if days_elapsed <= cumulative_days:
+            return stage["kc"]
+
+    # Default to the last stage Kc if beyond defined stages
+    return growth_stages[-1]["kc"]
 
 
 def calculate_water_amount(soil_moisture, area, soil_depth, predicted_rainfall, et0, kc, field_capacity=30):
@@ -187,7 +217,7 @@ def calculate_water_amount(soil_moisture, area, soil_depth, predicted_rainfall, 
     max_moisture_mm = (field_capacity / 100) * soil_depth_mm
 
     # Desired moisture based on crop ETc and area, capped by field capacity
-    desired_moisture_mm = min(etc * area, max_moisture_mm)  # Total moisture needed for the crop (in mm)
+    desired_moisture_mm = max(etc * area, max_moisture_mm)  # Total moisture needed for the crop (in mm)
 
     # Calculate the water deficit, accounting for predicted rainfall
     water_deficit_mm = desired_moisture_mm - current_moisture_mm - (predicted_rainfall * area)
@@ -227,7 +257,7 @@ def get_et0_from_openmeteo(latitude, longitude):
         et0_values = data['hourly']['et0_fao_evapotranspiration']
         et0 = et0_values[0]  # Assuming we take the first (latest) value
         if et0 <= 0:
-            et0 = 1.0  # may cause overwatering, Use Historical values to average
+            et0 = 1.0 # Need a better logic for extreme low values
             logging.info(f"Fetched ET₀ from Open-Meteo: {et0} mm/day")
 
         return et0
@@ -243,7 +273,7 @@ def past_decisions():
     cursor = conn.cursor()
 
     # Fetch past decisions
-    cursor.execute("SELECT * FROM decisions")  # Adjust the SQL query as needed
+    cursor.execute("SELECT * FROM decisions LIMIT 10")  # Adjust the SQL query as needed
     decisions = cursor.fetchall()
 
     # Convert the fetched decisions to a list of dictionaries
@@ -275,43 +305,51 @@ def watering_decision():
 
     soil_moisture, temperature, humidity = sensor_data
 
-    latitude = 11.6538
-    longitude = 78.1554
+    latitude = 11.6000 # SA
+    longitude = 78.0000
 
     daily_forecast = get_daily_weather_forecast(latitude, longitude)
     if daily_forecast:
-        watered_recently = False  # This should be a real flag from your watering logic
-        current_humidity = humidity  # Assuming current humidity is taken from the sensor data
-        decision = analyze_watering_need(daily_forecast, soil_moisture, humidity, watered_recently, current_humidity)
+        # Refined decision logic considering ET, humidity, and dynamic thresholds
+        decision = analyze_watering_need(daily_forecast, soil_moisture, humidity)
+
+        # Calculate water amount regardless of the decision
+        predicted_rainfall = daily_forecast['precipitation'][1]  # Tomorrow's rainfall
+        area = 10  # Example area to be watered in square meters
+        soil_depth = 0.2  # Example soil depth in meters
+        start_date = datetime(2024, 11, 1)
+        et0 = get_et0_from_openmeteo(latitude, longitude)
+        kc = calculate_dynamic_kc(start_date)
+
+        # Calculate water amount considering the soil moisture and CWR
+        water_amount = calculate_water_amount(soil_moisture, area, soil_depth, predicted_rainfall, et0, kc)
+        logging.info(f"Watering amount in litres: {water_amount}")
+
+        # Check if minimal watering is required (e.g., water deficit but not urgent)
+        if water_amount > 0 and "Minimal watering needed" in decision:
+            water_amount = int(water_amount) / 2  # Reduce for minimal deficit
+
+        # Double-check water deficit despite "No watering needed"
+        if "No watering needed" in decision and water_amount > 0:
+            logging.warning(
+                f"Water deficit detected despite 'No watering needed' decision. Water deficit: {water_amount} liters")
+            # Modify the decision based on water deficit
+            decision = f"Warning: Water deficit detected, {water_amount} liters needed."
+
+        # Save the updated decision and water amount to DB
         conn = connect_db()
         cursor = conn.cursor()
-
-        # Calculate water amount if light rain is predicted
-        # predicted_rainfall = daily_forecast['precipitation'][1]  # Assuming tomorrow's rainfall is of interest
-        predicted_rainfall = 0
-        area = 10  # Example area to be watered in square meters
-        logging.info(f"Area in sqm : {area}")
-        soil_depth = 0.2  # Example soil depth in meters
-        logging.info(f"Soil depth in mm : {soil_depth* 1000}")
-        et0 = get_et0_from_openmeteo(latitude, longitude)
-        water_amount = calculate_water_amount(soil_moisture, area, soil_depth, predicted_rainfall,et0,kc=1.1)
-        logging.info(f"Watering amount in litres: {water_amount}")
-        if "No watering needed" in decision:
-            # If no watering is needed, we can set water amount to 0
-            water_amount = 0  # Optional: Can also be handled in calculate_water_amount function
-
-        if "Minimal watering needed" in decision:
-            water_amount = int(water_amount) / 2  # Need a Better logic in Future
-
-        cursor.execute("INSERT INTO decisions (decision,water_amount) VALUES (?,?)", (decision, water_amount))
+        cursor.execute("INSERT INTO decisions (decision, water_amount) VALUES (?, ?)", (decision, water_amount))
         conn.commit()
         conn.close()
+
         return jsonify({
             'watering_decision': decision,
             'water_amount_liters': int(water_amount)
         }), 200
     else:
         return jsonify({'error': 'Error fetching weather data'}), 500
+
 
 
 def get_sensor_data():
