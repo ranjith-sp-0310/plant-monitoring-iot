@@ -333,7 +333,7 @@ def watering_decision():
         kc = calculate_dynamic_kc(start_date)
 
         # Calculate water amount considering the soil moisture and CWR
-        water_amount = calculate_water_amount(soil_moisture, area, soil_depth, predicted_rainfall, et0, kc)
+        water_amount = calculate_water_amount(soil_moisture, area, soil_depth, predicted_rainfall, et0, kc, humidity)
         logging.info(f"Watering amount in litres: {water_amount}")
 
         # Check if minimal watering is required (e.g., water deficit but not urgent)
