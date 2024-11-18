@@ -187,10 +187,10 @@ def calculate_dynamic_kc(start_date, current_date=None):
     return growth_stages[-1]["kc"]
 
 
-def calculate_water_amount(soil_moisture, area, soil_depth, predicted_rainfall, et0, kc, field_capacity=30):
+def calculate_water_amount(soil_moisture, area, soil_depth, predicted_rainfall, et0, kc, humidity, field_capacity=30):
     """
     Calculate the amount of water to apply based on soil moisture, area to water, soil depth, predicted rainfall,
-    and crop water requirements, taking field capacity into account.
+    crop water requirements, humidity, and field capacity.
 
     Parameters:
     - soil_moisture (float): Current soil moisture level (as a percentage).
@@ -199,11 +199,13 @@ def calculate_water_amount(soil_moisture, area, soil_depth, predicted_rainfall, 
     - predicted_rainfall (float): Amount of rain expected (in mm).
     - et0 (float): Reference evapotranspiration (in mm/day).
     - kc (float): Crop coefficient.
+    - humidity (float): Humidity level as a percentage (0 to 100).
     - field_capacity (float): Field capacity of the soil (as a percentage).
 
     Returns:
     - float: Amount of water to apply (in liters).
     """
+
     # Calculate crop evapotranspiration (ETc)
     etc = et0 * kc  # ETc in mm/day
 
@@ -225,6 +227,14 @@ def calculate_water_amount(soil_moisture, area, soil_depth, predicted_rainfall, 
     # Ensure that water deficit is not negative (no need for irrigation if excess water is present)
     water_deficit_mm = max(0, water_deficit_mm)
 
+    # Apply humidity adjustment
+    if humidity < 30:
+        logging.info(f"Humidity is low ({humidity}%), increasing water by 20%.")
+        water_deficit_mm *= 1.2  # Increase by 20% if humidity is low
+    elif humidity > 80:
+        logging.info(f"Humidity is high ({humidity}%), decreasing water by 10%.")
+        water_deficit_mm *= 0.9  # Decrease by 10% if humidity is high
+
     # Log values for info
     logging.info(f"Current Moisture: {current_moisture_mm} mm")
     logging.info(f"Desired Moisture: {desired_moisture_mm} mm")
@@ -234,7 +244,8 @@ def calculate_water_amount(soil_moisture, area, soil_depth, predicted_rainfall, 
     # Convert the deficit to liters (1 mm over 1 m² equals 1 liter)
     water_deficit_liters = water_deficit_mm * area  # Total water deficit in liters
 
-    return water_deficit_liters
+    return int(water_deficit_liters)
+
 
 # API  to get Et0 values
 def get_et0_from_openmeteo(latitude, longitude):
